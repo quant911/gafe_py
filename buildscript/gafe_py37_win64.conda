@@ -35,6 +35,7 @@ https://repo.anaconda.com/pkgs/main/win-64/asn1crypto-0.24.0-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/noarch/attrs-19.1.0-py_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/backcall-0.1.0-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/certifi-2019.3.9-py37_0.tar.bz2
+https://repo.anaconda.com/pkgs/main/noarch/click-7.0-py_0.tar.bz2
 https://conda.anaconda.org/conda-forge/noarch/colorama-0.3.9-py_1.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/decorator-4.3.2-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/docutils-0.14-py37_0.tar.bz2
@@ -42,6 +43,7 @@ https://repo.anaconda.com/pkgs/main/win-64/entrypoints-0.3-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/freetype-2.9.1-ha9979f8_1.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/idna-2.8-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/ipython_genutils-0.2.0-py37_0.tar.bz2
+https://repo.anaconda.com/pkgs/main/noarch/itsdangerous-1.1.0-py_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/jmespath-0.9.3-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/kiwisolver-1.0.1-py37h6538335_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/libtiff-4.0.10-hb898794_2.tar.bz2
@@ -70,6 +72,7 @@ https://repo.anaconda.com/pkgs/main/win-64/testpath-0.4.2-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/tornado-5.1.1-py37hfa6e2cd_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/wcwidth-0.1.7-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/webencodings-0.5.1-py37_1.tar.bz2
+https://repo.anaconda.com/pkgs/main/noarch/werkzeug-0.16.0-py_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/win_inet_pton-1.0.1-py37_1.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/wincertstore-0.2-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/cffi-1.11.5-py37h74b6da3_1.tar.bz2
@@ -94,6 +97,7 @@ https://repo.anaconda.com/pkgs/main/win-64/jupyter_core-4.4.0-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/pygments-2.3.1-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/terminado-0.8.1-py37_1.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/wheel-0.32.3-py37_0.tar.bz2
+https://repo.anaconda.com/pkgs/main/noarch/flask-1.1.1-py_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/jupyter_client-5.2.4-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/nbformat-4.4.0-py37_0.tar.bz2
 https://repo.anaconda.com/pkgs/main/win-64/pip-19.0.1-py37_0.tar.bz2
