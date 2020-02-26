@@ -1,4 +1,7 @@
 import pandas as pd
+import os
+import psycopg2 as pg2
+
 
 CREATE_YAHOO_PX_TABLE_SQL = """
     CREATE TABLE Yahoo_Prices (
@@ -15,6 +18,14 @@ CREATE_YAHOO_PX_TABLE_SQL = """
     )
 """
 
+INSERT_YAHOO_PX_TABLE_SQL_T = """
+    INSERT INTO Yahoo_Prices
+    ()
+    VALUES
+    ('{0}', '{1}', {2}, {3}, {4}, {5}, {6}, '{7}', '{8}');
+"""
+
+con = pg2.connect()
 
 def query_from_Yahoo_date_range(ticker, data_date_from, data_date_to):
     # type: (str, pd.Timestamp, pd.Timestamp) -> (pd.DataFrame, pd.DataFrame)
@@ -53,10 +64,17 @@ def query_from_Yahoo_date_range(ticker, data_date_from, data_date_to):
 
 def import_from_Yahoo(ticker, data_date, del_before_insert=True):
     # type: (str, pd.Timestamp) -> (pd.DataFrame, pd.DataFrame)
+    user = os.getlogin()
     df_px, df_div = query_from_Yahoo_date_range(ticker, data_date, data_date + pd.Timedelta(days=1))
     if del_before_insert:
         print('Delete rows for {0} on {1} OK'.format(ticker, data_date))
     else:
+        for row in df_px.iterrows():
+            sql = INSERT_YAHOO_PX_TABLE_SQL_T.format(ticker, data_date.strftime('%Y-%m-%d'),
+                                                 row['Open'], row['High'], row['Low'],
+                                                row['Close'], row['Adj Close'],
+                                                     user, pd.datetime.now().strftime('%Y-%m-%d %H:%m:%s'))
+
         print('Insert rows for {0} on {1} OK'.format(ticker, data_date))
 
 
