@@ -27,6 +27,7 @@ def get_market_data_con(env='PROD'):
     con = pg2.connect(con_str)
     return con
 
+
 def insert_sql(con, sql, close_con=False):
     cursor = con.cursor()
     res = cursor.execute(sql)
@@ -35,7 +36,21 @@ def insert_sql(con, sql, close_con=False):
     if close_con:
         con.close()
 
+    return res
+
+def delete_sql(con, sql, close_con=False):
+    cursor = con.cursor()
+    res = cursor.execute(sql)
+    con.commit()
+    cursor.close()
+    if close_con:
+        con.close()
+
+    return res
+
+
 def query_sql(con, sql, close_con=False):
+    # should obtain meta data to generate proper cols if no row
     cursor = con.cursor()
     res = cursor.execute(sql)
     rows = cursor.fetchall()
