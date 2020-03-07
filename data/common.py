@@ -1,4 +1,3 @@
-import psycopg2 as pg2
 import logging
 import pandas as pd
 import numpy as np
@@ -7,33 +6,8 @@ import functools as fct
 
 logger = logging.getLogger(__file__)
 
-CON_DIC_PROD = {'azure-marketdata': {'host': 'norfolk2.postgres.database.azure.com',
-                  'dbname': 'rawmarketdatadb', # case sensitive!
-                  'user': 'fengn@norfolk2',
-                  'password': 'typecats123!', # this is saved to github hence publicly viewable!!!
-                  'sslmode': 'require'},
-        }
 
-
-def get_con_dic(env):
-    if env == 'PROD':
-        return CON_DIC_PROD
-    else:
-        raise ValueError('env={0} not impl'.format(env))
-
-
-@fct.lru_cache(maxsize=10)
-def get_market_data_con(env='PROD'):
-    con_dic = get_con_dic(env)
-
-    dic = con_dic['azure-marketdata']
-    con_str = "host={0} user={1} dbname={2} password={3} sslmode={4}".format(
-        dic['host'], dic['user'], dic['dbname'], dic['password'], dic['sslmode'])
-    con = pg2.connect(con_str)
-    return con
-
-
-def insert_sql(con, sql, close_con=False):
+def do_sql_insert(con, sql, close_con=False):
     cursor = con.cursor()
     res = cursor.execute(sql)
     con.commit()
@@ -44,7 +18,14 @@ def insert_sql(con, sql, close_con=False):
     return res
 
 
-def delete_sql(con, sql, close_con=False):
+def do_sql_insert_df(con, df, close_con=False, col_to_field_dic=None):
+    # perform bulk insert
+    # if col_to_field_dic is None, assume all df columns should write to table and table field names match df col names
+
+    pass
+
+
+def do_sql_delete(con, sql, close_con=False):
     cursor = con.cursor()
     res = cursor.execute(sql)
     con.commit()
@@ -55,7 +36,7 @@ def delete_sql(con, sql, close_con=False):
     return res
 
 
-def query_sql(con, sql, close_con=False):
+def do_sql_query(con, sql, close_con=False):
     # should obtain meta data to generate proper cols if no row
     cursor = con.cursor()
     res = cursor.execute(sql)
@@ -65,6 +46,7 @@ def query_sql(con, sql, close_con=False):
     if close_con:
         con.close()
     return rows
+
 
 PG_TYPE_TO_NP_DTYPE_DIC = {
     'boolean': bool,
@@ -83,13 +65,13 @@ def get_table_meta_data(con, table_name):
         AND table_name = '{0}'
     """.format(table_name)
 
-    res = query_sql(con, sql)
+    res = do_sql_query(con, sql)
     res = [{ 'column_name': row[0], 'data_type': row[1], 'is_nullable': row[2]} for row in res]
     return res
 
 
 @fct.lru_cache(1000)
-def get_table_meta_to_dtypes(con, table_name):
+def get_dtypes_from_table_meta_data(con, table_name):
     meta_data = get_table_meta_data(con, table_name)
     dtype_dic = {}
 
@@ -118,20 +100,46 @@ def create_typed_empty_dataframe(dtype_dic):
 
     return df
 
-def query_sql_dataframe(con, sql, close_con=False, infer_dtypes=True):
+
+def create_typed_empty_datafram_using_table_meta_data(con, table_name):
+    dtype_dic = get_dtypes_from_table_meta_data(con, table_name)
+    return create_typed_empty_dataframe(dtype_dic)
+
+
+def is_single_table_sql(sql):
+    # type: (str) -> bool
+    return 'join' not in sql.lower()
+
+
+def infer_table_name_from_sql(sql):
+    sql = sql.lower()
+    if not is_single_table_sql(sql):
+        raise ValueError('infer_table_name_from_sql() only works for single table query: {0}'.format(sql))
+    tokens = sql.lower().split('from')
+    return tokens[1+tokens.index('from')]
+
+
+def do_sql_query_df(con, sql, close_con=False, infer_dtypes=True):
+    # type: (Connection, str, bool, bool) -> pd.DataFrame
     # convert query result to dataframe
     # infer_dtypes: use DB meta data to imply DataFrame column dtype
     #
     # -- works for single table query for now
     # 2) cannot handle alias
 
-    data = query_sql(con, sql, close_con)
+    data = do_sql_query(con, sql, close_con)
     if len(data) > 0:
         df = pd.DataFrame(data)
     else:
-        df = pd.DataFrame(get_table_meta_data(con, table_name))
+        if infer_dtypes:
+            table_name = infer_table_name_from_sql(sql)
+            df = create_typed_empty_datafram_using_table_meta_data(con, table_name)
+        else:
+            df = pd.DataFrame(data) # fall back for multi-table query
+    return df
 
-def del_to_query(sql):
+
+def infer_query_sql_from_del_sql(sql):
     # type: (str) -> str
     # transform a DELETE stmt to a SELECt query,
     # which allows saving down results before save
@@ -146,28 +154,40 @@ def del_to_query(sql):
     return new_sql
 
 
-def del_n_insert(con, del_sql, ins_sql, max_backup_rows=100000, is_atomic=True):
-    # type: (str, str, int, bool) -> (bool, int)
-    # if is_atomic is true, the system must be in one of the two states:
+def do_sql_del_n_insert(con, del_sql, ins_sql, max_backup_rows=100000, is_atomic=True):
+    # type: (Connection, str, int, bool) -> (bool, int)
+    #
+    # this function does not throw exception
+    # if is_atomic is true, the system must be in one of the two states upon exit:
     # 1) both del and insert succeed, function returns (True, insert_row_count)
     # 2) either del or insert or sth else fails, function returns (False, 0)
     backup_df = None
+    if not is_single_table_sql(ins_sql):
+        logger.error('do_sql_del_n_insert() only works for single table query, {0}'.format(ins_sql))
+        return False, 0
+
     if is_atomic:
-        backup_sql = del_to_query(del_sql)
+        backup_sql = infer_query_sql_from_del_sql(del_sql)
         try:
-            backup_df = query_sql(con, backup_sql) #todo: does it really return DataFrame?
+            backup_df = do_sql_query_df(con, backup_sql, close_con=False, infer_dtypes=True)
         except Exception as ex:
-            logger.error('del_n_insert() fails to back up rows. Abort.')
+            logger.error('do_sql_del_n_insert() fails to back up rows. Abort.')
             logger.error('del sql is:',del_sql)
             return False, 0
 
     is_success = True
     try:
-        del_status = delete_sql(con, del_sql)
+        del_status = do_sql_delete(con, del_sql)
     except Exception as ex:
         logger.error('del_n_insert() fails when deleting rows. Abort')
         is_success = False
-        #todo: restore based on del_status
 
-    return True, -1 #todo: update -1 to actual row count returned
+    if is_success:
+        ins_status = do_sql_insert(con, ins_sql)
+        if ins_status != 0: #todo: how to detect error status??
+            do_sql_insert_df(con, backup_df)
+        else:
+            return True, -1 #todo: update -1 to actual row count returned
+    else:
+        return False, 0
 
