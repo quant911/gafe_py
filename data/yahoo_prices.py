@@ -1,47 +1,43 @@
 import pandas as pd
 import os
-import psycopg2 as pg2
 
 import data.common as dcom
-
+import data.df_tools as df_tools
+import data.connections as conns
 
 # must use double quote wrapping col name, or it will be converted to lower case
 CREATE_YAHOO_PX_TABLE_SQL = """
-    CREATE TABLE Yahoo_Prices (
-    "Ticker" varchar(255) not null,
-    "DataDate" date not null,
-    "Open" real,
-    "High" real,
-    "Low" real,
-    "Close" real,
-    "Adj Close" real,
-    "Committer" varchar(255) not null,
-    "CommitTS" timestamp not null,
-    PRIMARY KEY (Ticker, Data_date)
+    CREATE TABLE yahoo_prices (
+        ticker varchar(255) not null,
+        data_date date not null,
+        open_price real,
+        high_price real,
+        low_price real,
+        close_price real,
+        adj_close_price real,
+        volume int,
+        committer varchar(255) not null,
+        commit_ts timestamp not null,
+        PRIMARY KEY (ticker, data_date)
     )
 """
 
 INSERT_YAHOO_PX_TABLE_SQL_T = """
-    INSERT INTO Yahoo_Prices
-    ()
+    INSERT INTO yahoo_Prices
+    (ticker, data_date, open_price, high_price, low_price, close_price, adj_close_price, volume, committer, commit_ts)
     VALUES
-    ('{0}', '{1}', {2}, {3}, {4}, {5}, {6}, '{7}', '{8}');
+    ('{ticker}', '{data_date}', {open_price}, {high_price}, {low_price}, {close_price}, {adj_close_price}, {volume}, 
+    '{committer}', '{commit_ts}');
 """
 
 DELETE_YAHOO_PX_TABLE_SQL_T = """
-    DELETE FROM Yahoo_Prices
-    WHERE Date_date = '{0}' and Ticker = '{1}'
+    DELETE FROM yahoo_prices
+    WHERE data_date = '{data_date}' and ticker = '{ticker}'
 """
 
-con = dcom.get_market_data_con('PROD')
+con = conns.get_market_data_con('PROD')
 
-
-def create_Yahoo_tables_with_tmp():
-    # tmp table is 1-to-1 created to hold INSERTION tmp result
-    # facilitate ideoponent del-n-insert
-    #1. create Yahoo_Price table
-    #2. create Yahoo_Dividend table
-
+TICKER_UNIV = ['AB', 'C', 'BAC', 'JPM', 'UBER', 'GOOG', 'APPL', 'FB', 'BNS', 'SPY', 'QQQ']
 
 def query_from_Yahoo_date_range(ticker, data_date_from, data_date_to):
     # type: (str, pd.Timestamp, pd.Timestamp) -> (pd.DataFrame, pd.DataFrame)
@@ -56,25 +52,32 @@ def query_from_Yahoo_date_range(ticker, data_date_from, data_date_to):
     if type(df) != pd.DataFrame:
         raise ValueError('Parsing from Yahoo Finance fails: {0}'.format(url))
 
-    df = df.rename(columns={'Close*': 'Close',
-                            'Adj Close**': 'Adj Close',
-                            'Date': 'Data_date'})
+    df = df.rename(columns={'Close*': 'close_price',
+                            'Open': 'open_price',
+                            'High': 'high_price',
+                            'Low': 'low_price',
+                            'Adj Close**': 'adj_close_price',
+                            'Volume': 'volume',
+                            'Date': 'data_date'})
 
-    df['Data_date'] = df['Data_date'].astype('datetime64[ns]')
-    df = df[(df['Data_date'] >= data_date_from) & (df['Data_date'] < data_date_to)]
-    df['Ticker'] = ticker
+    df['data_date'] = df['data_date'].astype('datetime64[ns]')
+    df = df[(df['data_date'] >= data_date_from) & (df['data_date'] < data_date_to)]
+    df['ticker'] = ticker
 
-    df_px = df[~df['Open'].str.contains('Dividend')]
-    df_div = df[df['Open'].str.contains('Dividend')]
+    df_px = df[~df['open_price'].str.contains('Dividend')]
+    df_div = df[df['open_price'].str.contains('Dividend')]
 
-    for col in ['Open', 'High', 'Low', 'Close', 'Adj Close']:
-        df_px[col] = df_px[col].astype('float')
+    for col in ['open_price', 'high_price', 'low_price', 'close_price', 'adj_close_price']:
+        df_px[col] = df_px[col].astype('float64')
 
-    for col in ['Volume', ]:
+    for col in ['volume', ]:
         df_px[col] = df_px[col].astype('int')
 
-    df_div['Dividend'] = df_div.apply(lambda r: float(r['Open'].replace(' Dividend', '')), axis=1)
-    df_div = df_div[['Data_date', 'Ticker', 'Dividend']]
+    if len(df_div) > 0: # todo: apply() does not work with empty frame, how to make it un-special case??
+        df_div['dividend'] = df_div.apply(lambda r: float(r['open_price'].replace(' Dividend', '')), axis=1)
+        df_div = df_div[['data_date', 'ticker', 'dividend']]
+    else:
+        df_div = pd.DataFrame(columns=['data_date', 'ticker', 'dividend'])
     return df_px, df_div
 
 
@@ -83,21 +86,56 @@ def import_from_Yahoo(ticker, data_date, del_before_insert=True):
     user = os.getlogin()
     df_px, df_div = query_from_Yahoo_date_range(ticker, data_date, data_date + pd.Timedelta(days=1))
     if del_before_insert:
-        sql = DELETE_YAHOO_PX_TABLE_SQL_T.format(ticker, data_date.strftime('%Y-%m-%d'))
-        res = dcom.delete_sql(con, sql)
+        sql = DELETE_YAHOO_PX_TABLE_SQL_T.format(ticker=ticker, data_date=data_date.strftime('%Y-%m-%d'))
+        res = dcom.do_sql(con, sql)
         print('DEL: ', res)
         print('Delete rows for {0} on {1} OK'.format(ticker, data_date))
 
-    for row in df_px.iterrows():
-        sql = INSERT_YAHOO_PX_TABLE_SQL_T.format(ticker, data_date.strftime('%Y-%m-%d'),
-                                             row['Open'], row['High'], row['Low'],
-                                            row['Close'], row['Adj Close'],
-                                                 user, pd.datetime.now().strftime('%Y-%m-%d %H:%m:%s'))
-        dcom.insert_sql(con, sql)
+    for rid, row in df_px.iterrows():
+        sql = INSERT_YAHOO_PX_TABLE_SQL_T.format(
+            ticker=ticker,
+            data_date=data_date.strftime('%Y-%m-%d'),
+            open_price=row['open_price'],
+            high_price=row['high_price'],
+            low_price=row['low_price'],
+            close_price=row['close_price'],
+            adj_close_price=row['adj_close_price'],
+            volume=row['volume'],
+            committer=user,
+            commit_ts=pd.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+        dcom.do_sql(con, sql)
 
         print('Insert rows for {0} on {1} OK'.format(ticker, data_date))
 
     return df_px, df_div
+
+
+def do_import_from_Yahoo_one_day(data_date, del_before_insert=True):
+    res = {'data_date': data_date}
+    for ticker in TICKER_UNIV:
+        try:
+            df_px, df_div = import_from_Yahoo(ticker, data_date, del_before_insert)
+            res[ticker] = len(df_px)
+        except Exception as ex:
+            print('ERR:', ex)
+            res[ticker] = 0
+
+    return res
+
+
+def do_import_from_Yahoo_date_range(data_date_from, data_date_to, del_before_insert=True):
+    res = []
+    dd = data_date_from
+    while dd < data_date_to:
+        res.append(do_import_from_Yahoo_one_day(dd, del_before_insert))
+        dd = dd + pd.Timedelta(days=1)
+
+    return dd
+
+
+def do_import_and_email(data_date_from, data_date_to, del_before_insert=True, email_receivers=None):
+    pass
 
 
 if __name__ == '__main__':
